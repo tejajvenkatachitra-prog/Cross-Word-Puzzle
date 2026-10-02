@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crosswise — Crossword Constraint Solver</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">▦</span>
+      <div class="brand-text">
+        <h1>Crosswise</h1>
+        <span class="brand-sub">trie + backtracking csp solver</span>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <span id="connStatus" class="conn-dot"></span>
+      <span id="connText">connecting…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <section class="grid-panel">
+      <div class="panel-header">
+        <h2>Grid layout</h2>
+        <p class="panel-sub">Click a cell to toggle block / open. Grid size is derived from the text you paste below.</p>
+      </div>
+
+      <textarea id="gridInput" class="grid-textarea" rows="5" spellcheck="false">.....
+.###.
+.###.
+.###.
+.....</textarea>
+
+      <div class="btn-row">
+        <button id="applyGrid" class="action-btn">Apply layout</button>
+        <button id="clearOverlay" class="action-btn ghost">Clear result</button>
+      </div>
+
+      <div id="gridContainer" class="grid-container">
+        <div class="grid-loading" id="gridLoading">initializing…</div>
+      </div>
+
+      <div class="panel-header" style="margin-top:20px;">
+        <h2>Dictionary</h2>
+        <p class="panel-sub">One word per line. This becomes the Trie the solver searches.</p>
+      </div>
+      <textarea id="dictInput" class="dict-textarea" rows="6" spellcheck="false">CRANE
+OLIVE
+CARGO
+ERASE
+GRAPE
+STONE
+PLANE
+CHAIR
+TABLE
+HOUSE</textarea>
+      <div class="btn-row">
+        <button id="applyDict" class="action-btn">Load dictionary</button>
+        <span id="dictCount" class="dict-count"></span>
+      </div>
+
+      <div class="btn-row solve-row">
+        <button id="solveBtn" class="action-btn primary">Solve ▸</button>
+        <label class="speed-label">
+          Animation speed
+          <input type="range" id="speed" min="1" max="100" value="55">
+        </label>
+      </div>
+    </section>
+
+    <aside class="side-panel">
+
+      <div class="card">
+        <h2>Run stats</h2>
+        <dl class="stat-list">
+          <div class="stat-row"><dt>Status</dt><dd id="statStatus">—</dd></div>
+          <div class="stat-row"><dt>Attempts</dt><dd id="statAttempts">—</dd></div>
+          <div class="stat-row"><dt>Slots</dt><dd id="statSlots">—</dd></div>
+          <div class="stat-row"><dt>Server time</dt><dd id="statTime">—</dd></div>
+        </dl>
+      </div>
+
+      <div class="card">
+        <h2>Algorithm notes</h2>
+        <div class="algo-notes">
+          <p class="algo-complexity">MRV heuristic + forward checking over Trie-backed candidates</p>
+          <p>Each step picks the <em>unfilled slot with the fewest legal words left</em> (Minimum Remaining Values),
+             looks up candidates in a Trie by pattern (fixed letters + wildcards), places one, and immediately checks
+             every crossing slot still has options left — backtracking the instant one doesn't.</p>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Slots</h2>
+        <div id="slotList" class="slot-list">
+          <p class="slot-empty">Apply a grid layout to see slots.</p>
+        </div>
+      </div>
+
+      <div class="card legend-card">
+        <h2>Legend</h2>
+        <ul class="legend-list">
+          <li><span class="swatch swatch-open"></span> Open cell</li>
+          <li><span class="swatch swatch-block"></span> Blocked cell</li>
+          <li><span class="swatch swatch-trying"></span> Trying a word</li>
+          <li><span class="swatch swatch-accepted"></span> Accepted so far</li>
+          <li><span class="swatch swatch-rejected"></span> Backtracked</li>
+        </ul>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <footer class="statusbar">
+    <span>C++ backend · Trie · CSP backtracking · MRV · forward checking</span>
+  </footer>
+
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

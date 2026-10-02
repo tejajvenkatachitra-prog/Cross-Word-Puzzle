@@ -23,6 +23,16 @@ public:
         }
         cur->isWord = true;
     }
+    // Exact lookup: is this fully-spelled word in the dictionary?
+    bool contains(const std::string& word) const {
+        const TrieNode* cur = root_.get();
+        for (char ch : word) {
+            int idx = charIndex(ch);
+            if (idx < 0 || !cur->children[idx]) return false;
+            cur = cur->children[idx].get();
+        }
+        return cur->isWord;
+    }
     std::vector<std::string> matchPattern(const std::string& pattern) const {
         std::vector<std::string> results;
         std::string buffer(pattern.size(), ' ');

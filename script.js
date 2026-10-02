@@ -14,6 +14,10 @@ const state = {
   slots: [],        // last /api/grid or /api/state response's slots
   animSpeed: 55,
   isRunning: false,
+  selected: null,        // {r, c} of the cell that receives typed letters
+  appliedGridText: '',   // grid text the server currently has
+  appliedDictText: '',   // dictionary text the server currently has
+  renderSeq: 0,          // guards against out-of-order responses
 };
 
 const gridInput = document.getElementById('gridInput');
@@ -37,7 +41,11 @@ async function apiPost(path, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body || {})
   });
-  if (!r.ok) throw new Error(`POST ${path} failed`);
+  if (!r.ok) {
+    let msg = `POST ${path} failed`;
+    try { const e = await r.json(); if (e && e.error) msg = e.error; } catch (_) {}
+    throw new Error(msg);
+  }
   return r.json();
 }
 
@@ -50,8 +58,9 @@ function parseDictText(text) {
 }
 
 function renderGrid(stateData) {
-  const { height, width, blocked, slots } = stateData;
+  const { height, width, blocked, slots, rows } = stateData;
   state.slots = slots;
+  state.rows = rows || [];
 
   const blockedSet = new Set(blocked.map(([r, c]) => `${r},${c}`));
 
@@ -91,6 +100,18 @@ function renderGrid(stateData) {
         div.appendChild(numEl);
       }
 
+      // pre-filled hint letter (typed by the user)
+      const hintCh = state.rows[r] ? state.rows[r][c] : '.';
+      if (!isBlocked && hintCh && /[A-Za-z]/.test(hintCh)) {
+        const letterEl = document.createElement('span');
+        letterEl.className = 'cell-letter hint';
+        letterEl.textContent = hintCh.toUpperCase();
+        div.appendChild(letterEl);
+      }
+      if (state.selected && state.selected.r === r && state.selected.c === c) {
+        div.classList.add('selected');
+      }
+
       div.addEventListener('click', () => toggleCell(r, c));
       frag.appendChild(div);
     }
@@ -115,17 +136,41 @@ function renderSlotList(slots) {
   });
 }
 
-function toggleCell(r, c) {
-  if (state.isRunning) return;
+function writeCell(r, c, ch) {
   const rows = parseGridText(gridInput.value);
-  if (r >= rows.length) return;
+  if (r >= rows.length) return false;
   const row = rows[r].split('');
-  if (c >= row.length) return;
-  row[c] = row[c] === '#' ? '.' : '#';
+  if (c >= row.length) return false;
+  row[c] = ch;
   rows[r] = row.join('');
   gridInput.value = rows.join('\n');
-  applyGrid();
+  return true;
 }
+
+function toggleCell(r, c) {
+  if (state.isRunning) return;
+  state.selected = { r, c };
+  const rows = parseGridText(gridInput.value);
+  if (r >= rows.length || c >= rows[r].length) return;
+  // '#' -> open; open or letter -> '#'
+  if (writeCell(r, c, rows[r][c] === '#' ? '.' : '#')) applyGrid();
+}
+
+// Click a cell to select it, then type a letter to pin it as a hint.
+// Backspace / Delete / Space empties it again.
+document.addEventListener('keydown', (e) => {
+  if (state.isRunning || !state.selected) return;
+  const tag = (e.target && e.target.tagName) || '';
+  if (tag === 'TEXTAREA' || tag === 'INPUT') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const { r, c } = state.selected;
+  let ch = null;
+  if (/^[a-zA-Z]$/.test(e.key)) ch = e.key.toUpperCase();
+  else if (e.key === 'Backspace' || e.key === 'Delete' || e.key === ' ') ch = '.';
+  if (ch === null) return;
+  e.preventDefault();
+  if (writeCell(r, c, ch)) applyGrid();
+});
 
 function cellEl(r, c) {
   return gridContainer.querySelector(`.cell[data-r="${r}"][data-c="${c}"]`);
@@ -134,23 +179,38 @@ function cellEl(r, c) {
 async function applyGrid() {
   const rows = parseGridText(gridInput.value);
   if (!rows.length) return;
-  const data = await apiPost('/api/grid', { rows });
-  renderGrid(data);
-  clearOverlay();
-  resetStats();
+  const seq = ++state.renderSeq;
+  try {
+    const data = await apiPost('/api/grid', { rows });
+    if (seq !== state.renderSeq) return; // a newer request already rendered
+    // use the server's normalized version (upper-case letters, padded rows)
+    gridInput.value = data.rows.join('\n');
+    state.appliedGridText = gridInput.value;
+    renderGrid(data);
+    clearOverlay();
+    resetStats();
+  } catch (err) {
+    connText.textContent = err.message || 'Could not apply grid';
+  }
 }
 
 async function applyDictionary() {
   const words = parseDictText(dictInput.value);
   if (!words.length) return;
-  const result = await apiPost('/api/dictionary', { words });
-  dictCount.textContent = `${result.wordCount} words loaded`;
+  try {
+    const result = await apiPost('/api/dictionary', { words });
+    dictCount.textContent = `${result.wordCount} words loaded`;
+    state.appliedDictText = dictInput.value;
+  } catch (err) {
+    connText.textContent = err.message || 'Could not load dictionary';
+  }
 }
 
 function clearOverlay() {
   gridContainer.querySelectorAll('.cell.trying, .cell.accepted, .cell.rejected').forEach(el => {
     el.classList.remove('trying', 'accepted', 'rejected');
   });
+  gridContainer.querySelectorAll('.cell-letter.solved').forEach(el => el.remove());
 }
 
 function resetStats() {
@@ -209,14 +269,15 @@ function paintFinalLetters(finalPatterns) {
       const c = slot.dir === 'across' ? slot.col + i : slot.col;
       const el = cellEl(r, c);
       if (!el) continue;
+      const ch = pattern[i];
+      if (!ch || ch === '.') continue;
       let letterSpan = el.querySelector('.cell-letter');
       if (!letterSpan) {
         letterSpan = document.createElement('span');
-        letterSpan.className = 'cell-letter';
+        letterSpan.className = 'cell-letter solved';
         el.appendChild(letterSpan);
       }
-      const ch = pattern[i];
-      if (ch && ch !== '.') letterSpan.textContent = ch;
+      if (!letterSpan.classList.contains('hint')) letterSpan.textContent = ch;
     }
   });
 }
@@ -224,23 +285,28 @@ function paintFinalLetters(finalPatterns) {
 async function solve() {
   if (state.isRunning) return;
   state.isRunning = true;
-  clearOverlay();
 
   const btn = document.getElementById('solveBtn');
   btn.disabled = true;
   btn.textContent = 'Solving…';
 
   try {
+    // make sure the server is solving exactly what is on screen
+    if (gridInput.value.trim() !== state.appliedGridText.trim()) await applyGrid();
+    if (dictInput.value.trim() !== state.appliedDictText.trim()) await applyDictionary();
+    clearOverlay();
+
     const result = await apiPost('/api/solve', {});
     await animateLog(result.log);
     if (result.success) paintFinalLetters(result.finalPatterns);
 
-    document.getElementById('statStatus').textContent = result.success ? 'Solved' : 'No solution';
+    document.getElementById('statStatus').textContent =
+      result.success ? 'Solved' : (result.timedOut ? 'Timed out' : 'No solution');
     document.getElementById('statAttempts').textContent = result.attemptsCount;
     document.getElementById('statSlots').textContent = state.slots.length;
     document.getElementById('statTime').textContent = `${result.microseconds} µs`;
   } catch (err) {
-    connText.textContent = 'Error contacting backend';
+    connText.textContent = (err && err.message) || 'Error contacting backend';
     connDot.classList.remove('online');
   } finally {
     btn.disabled = false;
@@ -263,10 +329,15 @@ async function boot() {
 
     const data = await apiGet('/api/state');
     gridLoading.style.display = 'none';
+    gridInput.value = data.rows.join('\n');
+    state.appliedGridText = gridInput.value;
     renderGrid(data);
 
-    // Load the default dictionary count for display
-    dictCount.textContent = 'default dictionary active';
+    // Show the dictionary the server is actually using (single source of truth)
+    const dict = await apiGet('/api/dictionary');
+    dictInput.value = dict.words.join('\n');
+    state.appliedDictText = dictInput.value;
+    dictCount.textContent = `${dict.wordCount} words loaded`;
   } catch (err) {
     connText.textContent = 'backend unreachable';
     gridLoading.textContent = 'Could not reach backend.';

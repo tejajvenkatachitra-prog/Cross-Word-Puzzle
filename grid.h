@@ -3,6 +3,7 @@
 #include <vector>
 #include <unordered_map>
 #include <cctype>
+#include <algorithm>
 
 // ------------------------------------------------------------
 // Crossword Grid -> Slots -> Constraint Graph
@@ -47,9 +48,25 @@ struct Slot {
 
 class CrosswordGrid {
 public:
-    CrosswordGrid(const std::vector<std::string>& rows) : rows_(rows) {
+    // Normalizes the raw input so the rest of the code can trust it:
+    //   - letters are upper-cased (they are pre-filled hints)
+    //   - '#' stays blocked
+    //   - anything else ('.', '-', spaces, ...) becomes an open cell '.'
+    //   - ragged rows are padded with blocked cells to a rectangle
+    CrosswordGrid(const std::vector<std::string>& rows) {
         height_ = static_cast<int>(rows.size());
-        width_ = height_ > 0 ? static_cast<int>(rows[0].size()) : 0;
+        width_ = 0;
+        for (const auto& r : rows) width_ = std::max(width_, static_cast<int>(r.size()));
+        for (const auto& r : rows) {
+            std::string line(width_, '#');
+            for (size_t i = 0; i < r.size(); i++) {
+                unsigned char ch = static_cast<unsigned char>(r[i]);
+                if (ch == '#') line[i] = '#';
+                else if (std::isalpha(ch)) line[i] = static_cast<char>(std::toupper(ch));
+                else line[i] = '.';
+            }
+            rows_.push_back(line);
+        }
         buildSlots();
         buildIntersections();
     }
@@ -64,6 +81,8 @@ public:
         char ch = rows_[r][c];
         return std::isalpha(static_cast<unsigned char>(ch)) ? static_cast<char>(std::toupper(ch)) : '.';
     }
+
+    const std::vector<std::string>& rows() const { return rows_; }
 
     std::vector<Slot>& slots() { return slots_; }
     const std::vector<Slot>& slots() const { return slots_; }

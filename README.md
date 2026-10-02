@@ -57,6 +57,17 @@ service.
 
 ---
 
+## 2b. Using it
+
+1. **Draw a layout** – click a cell to toggle block / open.
+2. **Pin letters (hints)** – click a cell, then type a letter. It turns amber and the solver must keep it. Backspace / Delete clears it. You can also type letters straight into the layout box (`C..T.` etc).
+3. **Press Solve** – the solver fills every remaining cell with dictionary words. On a blank grid this is effectively "generate me a crossword"; with hints it completes *your* puzzle.
+4. Edit the dictionary box any time – Solve automatically sends the latest grid + dictionary to the server first.
+
+If a puzzle has no valid fill with the current dictionary, the status says **No solution** – add more words (or remove a hint). Searches are capped at 5 seconds (**Timed out**).
+
+---
+
 ## 3. Running it locally
 
 ```bash
